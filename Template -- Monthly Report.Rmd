@@ -1,0 +1,414 @@
+---
+title: "`r params$report_name`"
+author: "Author: `r params$author_name`"
+date: "Date Created: `r format(Sys.Date(), '%Y-%m-%d')`"
+output: 
+  html_document:
+    theme: journal
+    toc: yes
+    toc_float:
+      collapsed: true
+    number_sections: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r seed}
+set.seed(42)
+```
+
+```{r functions}
+
+# Function to round numeric values to a specified number of decimal places
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+
+# Function to check, count and remove duplicates
+handle_duplicates <- function(data) {
+  dup_count <- sum(duplicated(data))
+  dup_rows <- data[duplicated(data) | duplicated(data, fromLast = TRUE)]
+  cleaned_data <- data[!duplicated(data), ]
+  
+  return(duplicates_count = dup_count)
+}
+
+#Function to check missing data 
+mean_missing <- function(x) {
+  return(mean(is.na(x)))
+}
+
+# Function to count and calculate percentage 
+count_and_percentage <- function(dat, by_names, na.rm = TRUE){
+  require(data.table)
+  setDT(dat)
+  total_count <- nrow(dat)  
+  tab <- dat[, .(Count = .N,
+                 Percentage = 100 * (.N/total_count)), by = by_names]
+  return(tab)
+}
+```
+
+```{r load_data}
+#Extract data from the 'params' list in automation script created for this report. The data type = data table 
+
+customers_data = params$customers_data
+products_data = params$products_data
+trans_data = params$trans_data
+views_data = params$views_data
+```
+
+```{r explore_data, eval = FALSE}
+## Explore customers data 
+# Preview first few rows of customers_data
+head(customers_data)
+# Customer overview by gender and region
+customers_data[, .N, keyby = c("gender", "region")]
+# Count the number of unique customers
+uniqueN(customers_data$customer_id)
+
+## Explore products data 
+# Preview first few rows of products_data
+head(products_data)
+# Get unique product categories
+unique(products_data$category)
+# Summary statistics for product prices
+summary(products_data$price)
+
+## Explore transactions data 
+# Preview first few rows of transactions data
+head(trans_data)
+# Transactions data overview 
+trans_data_overview <- trans_data[, .(`Total Transactions` = .N, 
+                                      `Number of unique customers` =length(unique(customer_id)),
+                                      `Number of unique products purchased`= uniqueN(trans_data$product_id),
+                                      `Number of days has transactions` = uniqueN(as.Date(time)), 
+                                      `Total Revenue` = sum(price))]
+trans_data_overview
+# Check unique days in transactions data
+unique(as.Date(views_data$time))
+# Summary statistics for transaction prices
+summary(trans_data$price)
+# Get unique quantities purchased in  transactions data
+unique(trans_data$quantity)
+# Calculate the percentage of each quantity type in  transactions data
+count_and_percentage(dat = trans_data, 
+                       by_names = "quantity")
+
+## Explore views data 
+# Preview first few rows of views data
+head(views_data)
+# Views data overview 
+views_data_overview <- views_data[, .(`Total Views` = .N, 
+                                      `Number of unique customers` =length(unique(customer_id)),
+                                      `Number of unique products viewed`= uniqueN(trans_data$product_id),
+                                      `Number of days has views` = uniqueN(as.Date(time)))]
+views_data_overview
+# Check unique days in views data 
+unique(as.Date(views_data$time))
+```
+
+```{r clean_data, eval = FALSE}
+#Check and remove duplicates
+handle_duplicates(customers_data)
+handle_duplicates(products_data)
+handle_duplicates(trans_data)
+handle_duplicates(views_data)
+
+#Check missing data 
+customers_data[, lapply(X = .SD, FUN = "mean_missing")]
+products_data[, lapply(X = .SD, FUN = "mean_missing")]
+trans_data[, lapply(X = .SD, FUN = "mean_missing")]
+views_data[, lapply(X = .SD, FUN = "mean_missing")]
+```
+
+```{r calculations}
+# Add variable 'revenue' 
+trans_data[, revenue := (price*quantity)]
+
+# Calculate the total revenue of the whole month 
+total_revenue <- sum(trans_data$revenue)
+
+# Retrieve the 'product_id' values from 'products_data' where the product category is "coat"
+coat_prod_id = products_data[category == "coat"]$product_id
+```
+
+This report was prepared based on data from a specific month in response to the questions posed previously.
+
+---
+
+# About Views
+
+## The 10 most viewed products during the first 7 days of the month.
+
+```{r part2_q1}
+# Join views_data with products_data to add the category information
+views_data <- views_data[products_data, 
+                          on = "product_id", 
+                          category := i.category]
+
+# Count views for products viewed for first 7 days of the month
+datatable(views_data[day(ymd_hms(time)) <8, 
+           .(view_count = .N), 
+           by = .(product_id, category)][order(-view_count)][1:10])
+
+```
+
+---
+
+## The 10 most viewed products for each category during the whole month. {.tabset}
+
+```{r part2_q2_overall_calculations}
+# Create a new table 'product_viewed' that counts the number of views for each product and its category
+
+product_viewed <- views_data[, .(view_count = .N), by = c("product_id", "category")]
+```
+
+### Shirt
+
+```{r part2_q2_shirt}
+# Filter the 'product_viewed' data table to include only rows where the category is "shirt"
+
+datatable(product_viewed[category == "shirt"][order(-view_count)][1:10, .(product_id, view_count)])
+```
+
+### Pants
+
+```{r part2_q2_pants}
+# Filter the 'product_viewed' data table to include only rows where the category is "pants"
+
+datatable(product_viewed[category == "pants"][order(-view_count)][1:10, .(product_id, view_count)])
+```
+
+### Coat
+
+```{r part2_q2_coat}
+# Filter the 'product_viewed' data table to include only rows where the category is "coat"
+
+datatable(product_viewed[category == "coat"][order(-view_count)][1:10, .(product_id, view_count)])
+```
+
+### Shoes
+
+```{r part2_q2_shoes}
+# Filter the 'product_viewed' data table to include only rows where the category is "shoe"
+
+datatable(product_viewed[category == "shoes"][order(-view_count)][1:10, .(product_id, view_count)])
+```
+
+### Hat
+
+```{r part2_q2_hat}
+# Filter the 'product_viewed' data table to include only rows where the category is "hat"
+
+datatable(product_viewed[category == "hat"][order(-view_count)][1:10, .(product_id, view_count)])
+```
+
+---
+
+# About Revenue
+
+## The total revenue for each category during the month.
+
+```{r part2_q3}
+# Join 'trans_data' with 'products_data' to add the 'category' column from 'products_data' to 'trans_data' based on matching 'product_id', creating a new data table 'rev_by_cat' showing revenue by category
+rev_by_cat <- trans_data[products_data,
+           ":=" (category = i.category),
+           on = "product_id"]
+
+# Calculate the total revenue for each category by summing the 'revenue' column, and order the results in descending order of total revenue.
+datatable(rev_by_cat[, .(total_revenue = round(sum(revenue),2)), 
+           by = category][order(-total_revenue)])
+```
+
+---
+
+## The average, median, and standard deviation of monthly spending per customer among customers with at least one transaction.
+
+```{r part2_q4}
+# Calculate summary statistics for customer spending by customer ID, 
+# including average, median, and standard deviation of revenue.
+cus_spending_brief <- trans_data[, .(avg_spending = mean(revenue), median_spending = median(revenue), sd_spending = sd(revenue)), by = customer_id]
+
+# Display the summary statistics in a datatable, rounding numeric values to 2 decimal places, and suppressing row names for a cleaner output.
+datatable(data = cus_spending_brief[, lapply(X = .SD, FUN = "round.numerics", digits = 2)], rownames = FALSE)
+```
+
+---
+
+## The percent of the monthly revenue was attributed to each category of gender.
+
+```{r part2_q5}
+# Join 'trans_data' with 'customers_data' to add the 'gender' column based on matching 'customer_id'.
+trans_data[customers_data,
+           gender := i.gender,
+           on = "customer_id"]
+# Calculate the total revenue grouped by gender, ordering the results by gender.
+rev_by_gender <- trans_data[, .(total_rev_by_gender = sum(revenue)), by = gender][order(gender)]
+
+# Calculate the percentage of total revenue for each gender relative to the overall total revenue, creating a new data table with gender and the corresponding percentage of revenue.
+rev_by_gender <- rev_by_gender[, .(pct_rev_gender = ((total_rev_by_gender/total_revenue)*100)),
+                               by = c("gender", "total_rev_by_gender")]
+
+# Display the percentage of revenue by gender in a datatable, rounding numeric values to 2 decimal places,
+# and suppressing row names for a cleaner output.
+datatable(data = rev_by_gender[, lapply(X = .SD, FUN = "round.numerics", digits = 2)], rownames = FALSE)
+```
+
+---
+
+## The increase in monthly average spending vs Income
+
+```{r part2_q6}
+cus_total_spending <- trans_data[,.(total_spending = sum(revenue)), by = customer_id]
+
+customers_data[cus_total_spending,
+                      ':=' (total_spending = i.total_spending),
+                      on = "customer_id"]
+
+# Replace any missing values (NA) in the 'total_spending' column with 0 in customers_data, indicating no spending in the month for those customers
+customers_data[is.na(total_spending), total_spending := 0]
+
+# Fit a linear regression model to predict total spending based on income, age, gender, and region.
+lm_cus_avg_spending_income <- lm(total_spending ~ income + age + gender + region,
+                                 data = customers_data)
+# Extract the coefficient for income from the linear model,
+# which indicates the average change in spending per unit increase in income.
+income_coef <- as.numeric(coef(lm_cus_avg_spending_income)["income"])
+
+# Calculate the estimated increase in average spending for a $10,000 increase in income, rounding the result to two decimal places.
+increase_in_avg_spending <- round(income_coef * 10000, 2)
+
+# Create the plot showing total spending vs income
+ggplot(customers_data, aes(x = income, y = total_spending)) +
+  geom_point(alpha = 0.6, color = "#6C757D") +  # Scatter plot of total spending
+  geom_smooth(method = "lm", se = FALSE, color = "red") +  # Linear regression line
+  labs(title = "Average Spending vs Income",
+       x = "Income",
+       y = "Average Spending") +
+  theme_minimal() +
+  theme(legend.position = "none")+  # Remove legend if not needed
+  scale_y_continuous(labels = label_number(scale = 1, big.mark = ",")) + # Format y-axis
+  scale_x_continuous(labels = label_number(scale = 1, big.mark = ","))
+```
+
+An increase of \$10,000 in income is associated with an increase of \$ `r increase_in_avg_spending` in a customer's monthly average spending
+
+---
+
+## Number of customers had at least one purchase during the month among customers who viewed at least 1 product
+
+```{r part2_q7}
+# Calculate the total number of unique customers who viewed products by counting the distinct customer IDs in 'views_data'.
+total_num_cus_viewed <- length(unique(views_data$customer_id))
+
+# Calculate the total number of unique customers who made purchases by counting the distinct customer IDs in 'trans_data'.
+total_num_purchased <- length(unique(trans_data$customer_id))
+
+# Calculate the percentage of customers who had at least one purchase out of those who viewed at least 1 product, by dividing the number of purchasing customers by the number of viewing customers and multiplying by 100.
+pct_cus_viewed_purchased <- total_num_purchased/total_num_cus_viewed*100
+```
+
+Total number of customers with a view : `r format(total_num_cus_viewed, big.mark = ",", scientific = FALSE)` <br> Total number of customers who made a purchase: `r format(total_num_purchased, big.mark = ",", scientific = FALSE)` <br> The percentage of customers with a view who made a purchase: `r sprintf("%.2f", pct_cus_viewed_purchased)` %
+
+---
+
+## The mean, median, and standard deviation for the number of unique products viewed per customer in different age groups, including 18-34, 35-49, 50-64, and 65+.
+
+```{r part2_q8}
+# Join 'views_data' with 'customers_data' to add the 'age' column based on matching 'customer_id'.
+views_data[customers_data,
+           age := i.age,
+           on = "customer_id"]
+
+# Create a new column 'age_group' in 'views_data' that categorizes customers into age groups based on the requirements from client's requirement
+views_data[, age_group := fifelse(age >= 18 & age <= 34, "18-34",
+                                  fifelse(age >= 35 & age <= 49, "35-49",
+                                          fifelse(age >= 50 & age <= 64, "50-64", "65+")))]
+
+# Calculate the number of unique products viewed by each customer, grouping by 'customer_id'.
+unique_views_per_customer <- views_data[, .(unique_products_viewed = uniqueN(product_id)), by = customer_id]
+
+# Join the 'age_group' information back to the 'unique_views_per_customer' data table, matching on 'customer_id'.
+unique_views_per_customer <- unique_views_per_customer[views_data[, .(age_group = unique(age_group)), by = customer_id], on = "customer_id"]
+
+# Calculate summary statistics (mean, median, and standard deviation) for unique products viewed, grouping by 'age_group' and ordering the results by age group.
+summary_stats <- unique_views_per_customer[, .(
+  mean_views = mean(unique_products_viewed),
+  median_views = median(unique_products_viewed),
+  sd_views = sd(unique_products_viewed)
+), by = age_group][order(age_group)]
+
+# Display the summary statistics in a data table format, rounding numeric values to 2 decimal places and suppressing row names for cleaner output.
+datatable(data = summary_stats[, lapply(X = .SD, FUN = "round.numerics", digits = 2)], rownames = FALSE)
+```
+
+---
+
+## The increase in a customer's monthly average spending vs Total Product Views
+
+```{r part2_q9}
+# Calculate the total number of views for each customer by counting the rows in 'views_data' grouped by 'customer_id'.
+cus_views <- views_data[, .(total_views = .N), by = customer_id]
+
+# Calculate the total spending for each customer by summing the 'revenue' in 'trans_data', grouped by 'customer_id'.
+cus_spending <- trans_data[, .(total_spending = sum(revenue)),
+                           by = 'customer_id']
+
+# Join the total spending information to the 'cus_views' data table, adding the 'spending' column.
+cus_views[cus_spending,':=' (total_spending = i.total_spending),
+                       on = "customer_id"]
+
+# Replace any missing values (NA) in the 'spending' column with 0, indicating no spending for those customers.
+cus_views[is.na(total_spending), total_spending := 0]
+
+# Join 'customers_data' to 'cus_views' to add customer demographic variables (age, gender, region).
+cus_views[customers_data,
+          ':=' (age = i.age,
+                gender = i.gender,
+                region = i.region),
+          on = "customer_id"]
+
+# Fit a linear model to analyze the relationship between spending and the predictors: total views, age, gender, and region.
+lm_avg_spending_10_views <- lm(total_spending ~ total_views + age + gender + region, data = cus_views)
+
+# Extract the coefficient for 'total_views' from the fitted linear model.
+total_views_coeff <- as.numeric(coef(lm_avg_spending_10_views)["total_views"])
+
+# Calculate the expected increase in average spending for each additional 10 views based on the coefficient, rounding the result to 2 decimal places.
+increase_in_avg_spending_views <- round(total_views_coeff * 10, 2)
+
+# Create the plot showing total spending vs total product views
+ggplot(cus_views, aes(x = total_views, y = total_spending)) +
+  geom_point(alpha = 0.6, color = "grey") +  # Scatter plot with green points
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 1.2) +  # Regression line in orange
+  labs(title = "Average Spending vs Total Product Views",
+       x = "Total Products Views",
+       y = "Average Spending") +
+  theme_minimal() +
+  theme(legend.position = "none")  +  # Remove legend if not needed
+  scale_y_continuous(labels = label_number(scale = 1, big.mark = ",")) + # Format y-axis
+  scale_x_continuous(labels = label_number(scale = 1, big.mark = ","))
+```
+
+An extra 10 total product views is associated with an increase of \$`r increase_in_avg_spending_views` in a customer's monthly average spending.
+
+---
+
+## Customer(s) purchased the largest number of coats during the month
+
+```{r part2_q10}
+# Filter the 'trans_data' for transactions where the 'product_id' is in the list of coat product IDs (coat_prod_id). Calculate the total quantity purchased for each customer by summing the 'quantity' column, grouped by 'customer_id'. Retain only the customers who purchased a total quantity of 10 or more coats. Order the resulting data table by total quantity in descending order.
+coat_trans <- trans_data[product_id %in% coat_prod_id,
+                   .(total_quantity = sum(quantity)), 
+                   by = customer_id][total_quantity>=10][order(-total_quantity)]
+
+# Create a datatable to display the results, rounding numeric values to 2 decimal places and removing row names.
+datatable(data = coat_trans[, lapply(X = .SD, FUN = "round.numerics", digits = 2)], rownames = FALSE)
+```
